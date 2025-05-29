@@ -1,0 +1,32 @@
+.custom-cursor {
+  width: 20px;
+  height: 20px;
+  border: 2px solid transparent;
+  border-radius: 50%;
+  position: fixed;
+  pointer-events: none;
+  z-index: 9999;
+  mix-blend-mode: difference;
+  animation: rainbow 3s linear infinite;
+}
+
+.cursor-dot {
+  width: 8px;
+  height: 8px;
+  background: white;
+  border-radius: 50%;
+  position: fixed;
+  pointer-events: none;
+  z-index: 9999;
+  transform: translate(-50%, -50%);
+}
+
+@keyframes rainbow {
+  0% { border-color: #ff0000; }
+  17% { border-color: #ff8000; }
+  33% { border-color: #ffff00; }
+  50% { border-color: #00ff00; }
+  67% { border-color: #0000ff; }
+  83% { border-color: #8000ff; }
+  100% { border-color: #ff0000; }
+}
