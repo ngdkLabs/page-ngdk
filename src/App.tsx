@@ -39,29 +39,65 @@ export default function App() {
 
   return (
     <div className="min-h-screen flex flex-col">
-      <Navbar maxWidth="xl" className="bg-background/70 backdrop-blur-md border-b border-divider">
+      <Navbar maxWidth="xl" className="bg-transparent shadow-none border-none py-2">
         <NavbarBrand>
-          <Icon icon="lucide:zap" className="text-primary text-2xl" />
-          <p className="font-bold text-inherit ml-2">NGDK!</p>
+          <img
+            src={theme === "light" ? "src/img/ngdkl.svg" : "src/img/ngdk.svg"}
+            alt="NGDK! Logo"
+            className="h-28 w-28 md:h-32 md:w-32"
+          />
         </NavbarBrand>
-        <NavbarContent className="hidden sm:flex gap-4" justify="center">
+        <NavbarContent className="hidden sm:flex gap-2" justify="center">
           <NavbarItem>
-            <Link color="foreground" href="#" aria-current="page">
-              Dashboard
-            </Link>
+            <div style={{ background: "#255F38" }} className="rounded-full px-2 py-0.5">
+              <Link
+                color="foreground"
+                href="#"
+                aria-current="page"
+                className={theme === "light" ? "text-white text-sm" : "text-sm"}
+              >
+                Dashboard
+              </Link>
+            </div>
+          </NavbarItem>
+
+                    <NavbarItem>
+            <div style={{ background: "#255F38" }} className="rounded-full px-2 py-0.5">
+              <Link
+                color="foreground"
+                href="#"
+                aria-current="page"
+                className={theme === "light" ? "text-white text-sm" : "text-sm"}
+              >
+                Doc
+              </Link>
+            </div>
+          </NavbarItem>
+
+          <NavbarItem>
+            <div style={{ background: "#255F38" }} className="rounded-full px-2 py-0.5">
+              <Link
+                color="foreground"
+                href="#"
+                className={theme === "light" ? "text-white text-sm" : "text-sm"}
+              >
+                History
+              </Link>
+            </div>
           </NavbarItem>
           <NavbarItem>
-            <Link color="foreground" href="#">
-              History
-            </Link>
-          </NavbarItem>
-          <NavbarItem>
-            <Link color="foreground" href="#">
-              Settings
-            </Link>
+            <div style={{ background: "#255F38" }} className="rounded-full px-2 py-0.5">
+              <Link
+                color="foreground"
+                href="#"
+                className={theme === "light" ? "text-white text-sm" : "text-sm"}
+              >
+                Settings
+              </Link>
+            </div>
           </NavbarItem>
         </NavbarContent>
-        <NavbarContent justify="end" className="gap-2">
+        <NavbarContent justify="end" className="gap-1">
           <NavbarItem>
             <Tooltip content="Toggle theme">
               <div className="flex items-center">
@@ -75,31 +111,31 @@ export default function App() {
               </div>
             </Tooltip>
           </NavbarItem>
-          
           <NavbarItem>
             <Tooltip content="Chat with AI">
               <Button 
                 isIconOnly 
+                size="sm"
                 variant="light" 
                 onPress={toggleChat}
                 className={isChatOpen ? "text-primary" : ""}
               >
-                <Icon icon="lucide:message-circle" className="text-xl" />
+                <Icon icon="lucide:message-circle" className="text-lg" />
               </Button>
             </Tooltip>
           </NavbarItem>
           <NavbarItem>
             <ConnectButton showBalance={false} />
           </NavbarItem>
-
-                    <NavbarItem>
+          <NavbarItem>
             <Dropdown>
               <DropdownTrigger>
                 <Button 
                   variant="light" 
                   isIconOnly
+                  size="sm"
                 >
-                  <Icon icon="lucide:menu" className="text-xl" />
+                  <Icon icon="lucide:menu" className="text-lg" />
                 </Button>
               </DropdownTrigger>
               <DropdownMenu aria-label="User menu">
@@ -118,7 +154,6 @@ export default function App() {
               </DropdownMenu>
             </Dropdown>
           </NavbarItem>
-          
         </NavbarContent>
       </Navbar>
       
@@ -130,8 +165,11 @@ export default function App() {
         <div className="container mx-auto px-4 md:px-6 lg:px-8">
           <div className="flex flex-col md:flex-row justify-between items-center">
             <div className="flex items-center mb-4 md:mb-0">
-              <Icon icon="lucide:zap" className="text-primary text-xl" />
-              <p className="font-semibold text-inherit ml-2">NGDK!</p>
+              <img
+              src={theme === "light" ? "src/img/ngdkl.svg" : "src/img/ngdk.svg"}
+              alt="NGDK! Logo"
+              className="h-16 w-16"
+              />
             </div>
             <div className="text-small text-default-500">
               © 2024 NGDK!. All rights reserved.

@@ -12,38 +12,38 @@ import { BotStatus } from './bot-status';
 export const Dashboard: React.FC = () => {
   const [selectedTab, setSelectedTab] = React.useState("automation");
   const { isConnected } = useAccount();
-  const [alerts, setAlerts] = React.useState([
-    {
-      id: "1",
-      type: "success",
-      title: "Swap completed",
-      description: "Your swap transaction was completed successfully",
-      isVisible: true
-    },
-    {
-      id: "2",
-      type: "info",
-      title: "Faucet claimed",
-      description: "You have successfully claimed tokens from the faucet",
-      isVisible: true
-    },
-    {
-      id: "3",
-      type: "warning",
-      title: "Network congestion",
-      description: "Network congestion detected. Transactions may be delayed",
-      isVisible: true
-    }
-  ]);
+  // const [alerts, setAlerts] = React.useState([
+  //   {
+  //     id: "1",
+  //     type: "success",
+  //     title: "Swap completed",
+  //     description: "Your swap transaction was completed successfully",
+  //     isVisible: true
+  //   },
+  //   {
+  //     id: "2",
+  //     type: "info",
+  //     title: "Faucet claimed",
+  //     description: "You have successfully claimed tokens from the faucet",
+  //     isVisible: true
+  //   },
+  //   {
+  //     id: "3",
+  //     type: "warning",
+  //     title: "Network congestion",
+  //     description: "Network congestion detected. Transactions may be delayed",
+  //     isVisible: true
+  //   }
+  // ]);
   
-  const handleCloseAlert = (id: string) => {
-    setAlerts(alerts.filter(alert => alert.id !== id));
-  };
+  // const handleCloseAlert = (id: string) => {
+  //   setAlerts(alerts.filter(alert => alert.id !== id));
+  // };
   
   return (
     <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
       {/* Alerts section */}
-      <div className="lg:col-span-3">
+      {/* <div className="lg:col-span-3">
         <div className="space-y-2 mb-4">
           {alerts.map((alert) => (
             <Alert
@@ -56,7 +56,7 @@ export const Dashboard: React.FC = () => {
             />
           ))}
         </div>
-      </div>
+      </div> */}
       
       <div className="lg:col-span-2">
         <Card className="mb-6">
