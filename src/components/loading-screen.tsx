@@ -29,7 +29,7 @@ export const LoadingScreen: React.FC = () => {
         className="flex flex-col items-center mb-8"
       >
         <motion.img
-          src={theme === 'dark' ? "/src/img/ngdk.png" : "/src/img/ngdkl.svg"}
+          src={theme === 'dark' ? "/src/img/ngdk.svg" : "/src/img/ngdkl.svg"}
           alt="NGDK Logo"
           className="w-40 h-40 sm:w-64 sm:h-64" // Responsive size
           initial={{ rotate: -20, scale: 0.8, opacity: 0 }}
