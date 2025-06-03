@@ -79,38 +79,38 @@ export const AutomationPanel: React.FC = () => {
     }, 1500);
   };
 
-  const { data: canSayGM } = useContractRead({
-    address: GM_CONTRACT_ADDRESS as `0x${string}`,
-    abi: GM_CONTRACT_ABI as any,
-    functionName: 'canSayGM',
-    args: [address],
-  });
+const { data: canSayGM } = useContractRead({
+  address: GM_CONTRACT_ADDRESS as `0x${string}`,
+  abi: GM_CONTRACT_ABI as any,
+  functionName: 'canSayGM',
+  args: [address],
+});
 
-  const { data: userGMInfo } = useContractRead({
-    address: GM_CONTRACT_ADDRESS as `0x${string}`,
-    abi: GM_CONTRACT_ABI as any,
-    functionName: 'getUserGMInfo',
-    args: [address],
-  });
+const { data: userGMInfo } = useContractRead({
+  address: GM_CONTRACT_ADDRESS as `0x${string}`,
+  abi: GM_CONTRACT_ABI as any,
+  functionName: 'getUserGMInfo',
+  args: [address],
+});
 
-  const { data: gmHistory } = useContractRead({
-    address: GM_CONTRACT_ADDRESS as `0x${string}`,
-    abi: GM_CONTRACT_ABI as any,
-    functionName: 'getUserGMHistory',
-    args: [address],
-  });
+const { data: gmHistory } = useContractRead({
+  address: GM_CONTRACT_ADDRESS as `0x${string}`,
+  abi: GM_CONTRACT_ABI as any,
+  functionName: 'getUserGMHistory',
+  args: [address],
+});
 
-  const { write: sayGMToCommunity, isLoading: isSayingGMToCommunity } = useContractWrite({
-    address: GM_CONTRACT_ADDRESS as `0x${string}`,
-    abi: GM_CONTRACT_ABI as any,
-    functionName: 'sayGMToCommunity',
-  });
+const { write: sayGMToCommunity, isLoading: isSayingGMToCommunity } = useContractWrite({
+  address: GM_CONTRACT_ADDRESS as `0x${string}`,
+  abi: GM_CONTRACT_ABI as any,
+  functionName: 'sayGMToCommunity',
+});
 
-  const { write: sayGMToUser, isLoading: isSayingGMToUser } = useContractWrite({
-    address: GM_CONTRACT_ADDRESS as `0x${string}`,
-    abi: GM_CONTRACT_ABI as any,
-    functionName: 'sayGM',
-  });
+const { write: sayGMToUser, isLoading: isSayingGMToUser } = useContractWrite({
+  address: GM_CONTRACT_ADDRESS as `0x${string}`,
+  abi: GM_CONTRACT_ABI as any,
+  functionName: 'sayGM',
+});
 
   
   return (
@@ -883,17 +883,26 @@ export const AutomationPanel: React.FC = () => {
                     <label className="text-small font-medium">Networks</label>
                     <Select
                       selectionMode="multiple"
-                      placeholder="Select networks"
+                      placeholder={isConnected ? "Connected" : "Select networks"}
                       selectedKeys={selectedNetworks}
                       onSelectionChange={(keys) => setSelectedNetworks([...(keys as Set<string>)])}
                       className="w-full"
+                      isDisabled={isConnected}
                     >
-                      <SelectItem key="megaeth">MegaETH Testnet</SelectItem>
-                      <SelectItem key="pharos">Pharos</SelectItem>
-                      <SelectItem key="somnia">Somnia</SelectItem>
+                      {/* Only show the connected network if connected, else show all */}
+                      {isConnected ? (
+                        // You may want to map the address/chainId to a network name here
+                        <SelectItem key="connected">{`Connected`}</SelectItem>
+                      ) : (
+                        <>
+                          <SelectItem key="megaeth">MegaETH Testnet</SelectItem>
+                          <SelectItem key="pharos">Pharos</SelectItem>
+                          <SelectItem key="somnia">Somnia</SelectItem>
+                        </>
+                      )}
                     </Select>
                   </div>
-                  
+
                   <div className="flex flex-col gap-2">
                     <label className="text-small font-medium">Tasks</label>
                     <Select
