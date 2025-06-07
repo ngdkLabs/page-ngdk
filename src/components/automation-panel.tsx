@@ -11,8 +11,6 @@ import { useState } from "react";
 
 // Replace with your actual contract address (must start with 0x and be 42 characters)
 const GM_CONTRACT_ADDRESS = "0x79ed1039f8c58a2f7ee94b3d1c78fd5785cee25e";
-
-
 const GTE_ROUTER_ADDRESS = "0xa6b579684e943f7d00d616a48cf99b5147fc57a5";
 const GTE_TOKENS = {
   MegaETH: { address: "0x10a6be7d23989d00d528e68cf8051d095f741145", decimals: 18 },
@@ -21,6 +19,7 @@ const GTE_TOKENS = {
   tkUSDC: { address: "0xfaf334e157175ff676911adcf0964d7f54f2c424", decimals: 6 },
   ETH: { address: null, decimals: 18 },
 };
+
 const ROUTER_ABI = [
   "function swapExactETHForTokens(uint256 amountOutMin, address[] path, address to, uint256 deadline) payable returns (uint256[] amounts)",
   "function swapExactTokensForETH(uint256 amountIn, uint256 amountOutMin, address[] path, address to, uint256 deadline) returns (uint256[] amounts)",
