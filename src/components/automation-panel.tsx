@@ -2,13 +2,37 @@ import React from 'react';
 import { Tabs, Tab, Card, CardBody, Input, Button, Dropdown, DropdownTrigger, DropdownMenu, DropdownItem, Spacer, Checkbox, Select, SelectItem } from "@heroui/react";
 import { Icon } from "@iconify/react";
 import { addToast } from "@heroui/react";
-import { useContractWrite, useContractRead, useAccount } from 'wagmi';
+import { useContractWrite, useContractRead, useAccount,useWaitForTransaction} from 'wagmi';
 import { parseEther } from 'viem';
+import { ethers, utils } from "ethers";
+import GM_CONTRACT_ABI from "../utils/sayGM.json";
+import { useState } from "react";
+
 
 // Replace with your actual contract address (must start with 0x and be 42 characters)
 const GM_CONTRACT_ADDRESS = "0x79ed1039f8c58a2f7ee94b3d1c78fd5785cee25e";
-import GM_CONTRACT_ABI from "../utils/sayGM.json";
 
+
+const GTE_ROUTER_ADDRESS = "0xa6b579684e943f7d00d616a48cf99b5147fc57a5";
+const GTE_TOKENS = {
+  MegaETH: { address: "0x10a6be7d23989d00d528e68cf8051d095f741145", decimals: 18 },
+  WETH: { address: "0x776401b9bc8aae31a685731b7147d4445fd9fb19", decimals: 18 },
+  USDC: { address: "0x8d635c4702ba38b1f1735e8e784c7265dcc0b623", decimals: 6 },
+  tkUSDC: { address: "0xfaf334e157175ff676911adcf0964d7f54f2c424", decimals: 6 },
+  ETH: { address: null, decimals: 18 },
+};
+const ROUTER_ABI = [
+  "function swapExactETHForTokens(uint256 amountOutMin, address[] path, address to, uint256 deadline) payable returns (uint256[] amounts)",
+  "function swapExactTokensForETH(uint256 amountIn, uint256 amountOutMin, address[] path, address to, uint256 deadline) returns (uint256[] amounts)",
+  "function swapExactTokensForTokens(uint256 amountIn, uint256 amountOutMin, address[] path, address to, uint256 deadline) returns (uint256[] amounts)",
+  "function getAmountsOut(uint256 amountIn, address[] path) view returns (uint256[] amounts)",
+];
+const ERC20_ABI = [
+  "function balanceOf(address owner) view returns (uint256)",
+  "function approve(address spender, uint256 amount) returns (bool)",
+  "function allowance(address owner, address spender) view returns (uint256)",
+  "function decimals() view returns (uint8)",
+];
 
 export const AutomationPanel: React.FC = () => {
   const [automationType, setAutomationType] = React.useState("swap");
@@ -16,6 +40,22 @@ export const AutomationPanel: React.FC = () => {
   const [isLoading, setIsLoading] = React.useState(false);
   const { isConnected } = useAccount();
   const { address } = useAccount();
+
+  const [swapTokens, setSwapTokens] = React.useState<string[]>(["MegaETH", "USDC", "tkUSDC", "WETH"]);
+  const [swapStatus, setSwapStatus] = React.useState<string | null>(null);
+  const [swapRounds, setSwapRounds] = React.useState<number>(1); // NEW: swap berapa kali
+
+    // Add these new state variables inside AutomationPanel
+  const [sendAmount, setSendAmount] = useState<string>('0.1');
+  const [customAmount, setCustomAmount] = useState<string>('');
+  const [recipient, setRecipient] = useState<string>('');
+  const [useRandomRecipient, setUseRandomRecipient] = useState(true);
+  const [sendCount, setSendCount] = useState<number>(1);
+  const [isSending, setIsSending] = useState(false);
+  const [currentSend, setCurrentSend] = useState<number>(0);
+
+
+
   
   // Add new state variables for bot configuration
   const [botMode, setBotMode] = React.useState("manual");
@@ -79,6 +119,182 @@ export const AutomationPanel: React.FC = () => {
     }, 1500);
   };
 
+  // Helper: get injected provider (Metamask, etc)
+    const getProviderAndSigner = () => {
+      if (!(window as any).ethereum) throw new Error("No wallet provider found");
+      const provider = new ethers.providers.Web3Provider((window as any).ethereum);
+      return provider;
+    };
+// Update the swap bot logic to handle errors better and add proper slippage
+const handleSwapBot = async () => {
+  if (!isConnected) {
+    addToast({
+      title: "Wallet not connected",
+      description: "Please connect your wallet to start swap bot",
+      color: "warning"
+    });
+    return;
+  }
+  if (!swapTokens.length) {
+    addToast({
+      title: "No tokens selected", 
+      description: "Please select at least one token to swap",
+      color: "warning"
+    });
+    return;
+  }
+
+  setIsLoading(true);
+  setSwapStatus("Running swap bot...");
+
+  try {
+    const provider = await getProviderAndSigner();
+    const signer = await provider.getSigner();
+    const router = new ethers.Contract(GTE_ROUTER_ADDRESS, ROUTER_ABI, signer);
+
+    // Add slippage tolerance (0.5%)
+    const slippageTolerance = 0.005;
+
+    for (let round = 1; round <= swapRounds; round++) {
+      setSwapStatus(`Swap round ${round} of ${swapRounds}...`);
+
+      // 1. Swap ETH to tokens
+      for (const token of swapTokens) {
+        if (token === "ETH") continue;
+
+        setSwapStatus(`Round ${round}: Swapping ETH → ${token}...`);
+
+        try {
+          // Random amount between 0.0001 - 0.0005 ETH
+          const amountEth = (Math.random() * (0.0005 - 0.0001) + 0.0001).toFixed(6);
+          const amountIn = utils.parseUnits(amountEth, 18);
+
+          // Get expected output amount
+          const path = [GTE_TOKENS["WETH"].address, GTE_TOKENS[token].address];
+          const amounts = await router.getAmountsOut(amountIn, path);
+          
+          // Calculate minimum amount out with slippage
+          const minAmountOut = amounts[1].mul(ethers.BigNumber.from(1000 - Math.floor(slippageTolerance * 1000)))
+            .div(ethers.BigNumber.from(1000));
+
+          const deadline = Math.floor(Date.now() / 1000) + 300; // 5 minutes
+
+          // Execute swap with minimum output amount
+          const tx = await router.swapExactETHForTokens(
+            minAmountOut,
+            path,
+            address,
+            deadline,
+            { 
+              value: amountIn,
+              gasLimit: 300000 // Add explicit gas limit
+            }
+          );
+
+          setSwapStatus(`Round ${round}: Waiting for ETH → ${token}...`);
+          await tx.wait();
+          
+          addToast({
+            title: "Swap Success",
+            description: `Swapped ${amountEth} ETH to ${token}`,
+            color: "success"
+          });
+
+        } catch (err: any) {
+          console.error(`Swap ETH → ${token} failed:`, err);
+          addToast({
+            title: "Swap Failed",
+            description: `ETH → ${token}: ${err?.reason || err?.message || "Unknown error"}`,
+            color: "danger"
+          });
+          // Continue with next token
+          continue;
+        }
+
+        // Add delay between swaps
+        await new Promise(resolve => setTimeout(resolve, 2000));
+      }
+
+      // 2. Swap tokens back to ETH
+      for (const token of swapTokens) {
+        if (token === "ETH") continue;
+
+        setSwapStatus(`Round ${round}: Swapping ${token} → ETH...`);
+
+        try {
+          const erc20 = new ethers.Contract(GTE_TOKENS[token].address, ERC20_ABI, signer);
+          const balance = await erc20.balanceOf(address);
+
+          if (balance.gt(0)) {
+            // Check and set allowance if needed
+            const allowance = await erc20.allowance(address, GTE_ROUTER_ADDRESS);
+            if (allowance.lt(balance)) {
+              const approveTx = await erc20.approve(GTE_ROUTER_ADDRESS, ethers.constants.MaxUint256);
+              await approveTx.wait();
+            }
+
+            // Get expected output amount
+            const path = [GTE_TOKENS[token].address, GTE_TOKENS["WETH"].address];
+            const amounts = await router.getAmountsOut(balance, path);
+
+            // Calculate minimum amount out with slippage
+            const minAmountOut = amounts[1].mul(ethers.BigNumber.from(1000 - Math.floor(slippageTolerance * 1000)))
+              .div(ethers.BigNumber.from(1000));
+
+            const deadline = Math.floor(Date.now() / 1000) + 300;
+
+            const tx = await router.swapExactTokensForETH(
+              balance,
+              minAmountOut,
+              path,
+              address,
+              deadline,
+              { gasLimit: 300000 }
+            );
+
+            setSwapStatus(`Round ${round}: Waiting for ${token} → ETH...`);
+            await tx.wait();
+
+            addToast({
+              title: "Swap Success",
+              description: `Swapped ${token} to ETH`,
+              color: "success"
+            });
+
+          }
+        } catch (err: any) {
+          console.error(`Swap ${token} → ETH failed:`, err);
+          addToast({
+            title: "Swap Failed",
+            description: `${token} → ETH: ${err?.reason || err?.message || "Unknown error"}`,
+            color: "danger"
+          });
+          // Continue with next token
+          continue;
+        }
+
+        // Add delay between swaps
+        await new Promise(resolve => setTimeout(resolve, 2000));
+      }
+    }
+
+    setSwapStatus("All swaps completed!");
+
+  } catch (err: any) {
+    console.error("Swap bot error:", err);
+    addToast({
+      title: "Swap Bot Error",
+      description: err?.reason || err?.message || "Unknown error",
+      color: "danger"
+    });
+    setSwapStatus("Error running swap bot");
+  }
+
+  setIsLoading(false);
+  setTimeout(() => setSwapStatus(null), 3000);
+};
+
+
 const { data: canSayGM } = useContractRead({
   address: GM_CONTRACT_ADDRESS as `0x${string}`,
   abi: GM_CONTRACT_ABI as any,
@@ -93,25 +309,190 @@ const { data: userGMInfo } = useContractRead({
   args: [address],
 });
 
-const { data: gmHistory } = useContractRead({
+// Update the contract read hooks with refetch
+const { data: gmHistory, refetch: refetchGMHistory } = useContractRead({
   address: GM_CONTRACT_ADDRESS as `0x${string}`,
   abi: GM_CONTRACT_ABI as any,
   functionName: 'getUserGMHistory',
   args: [address],
 });
 
-const { write: sayGMToCommunity, isLoading: isSayingGMToCommunity } = useContractWrite({
+// Add transaction data to write hooks
+const { write: sayGMToCommunity, data: gmToCommunityData, isLoading: isSayingGMToCommunity } = useContractWrite({
   address: GM_CONTRACT_ADDRESS as `0x${string}`,
   abi: GM_CONTRACT_ABI as any,
   functionName: 'sayGMToCommunity',
 });
 
-const { write: sayGMToUser, isLoading: isSayingGMToUser } = useContractWrite({
+const { write: sayGMToUser, data: gmToUserData, isLoading: isSayingGMToUser } = useContractWrite({
   address: GM_CONTRACT_ADDRESS as `0x${string}`,
   abi: GM_CONTRACT_ABI as any,
   functionName: 'sayGM',
 });
 
+// Add transaction waiting hooks
+const { isLoading: isWaitingGMToCommunity } = useWaitForTransaction({
+  hash: gmToCommunityData?.hash,
+  onSuccess: () => {
+    refetchGMHistory();
+  }
+});
+
+const { isLoading: isWaitingGMToUser } = useWaitForTransaction({
+  hash: gmToUserData?.hash,
+  onSuccess: () => {
+    refetchGMHistory();
+  }
+});
+
+// Combine loading states
+const isGMLoading = isSayingGMToCommunity || isSayingGMToUser || 
+                    isWaitingGMToCommunity || isWaitingGMToUser;
+
+// Create handleSendGM function
+const handleSendGM = async () => {
+  try {
+    const messageInput = document.getElementById("gm-message") as HTMLInputElement;
+    const recipientInput = document.getElementById("gm-recipient") as HTMLInputElement;
+    const message = messageInput?.value?.trim() || "GM!";
+    const recipient = recipientInput?.value?.trim();
+
+    if (!isConnected) {
+      addToast({
+        title: "Wallet not connected",
+        description: "Please connect your wallet to say GM",
+        color: "warning"
+      });
+      return;
+    }
+
+    if (recipient) {
+      await sayGMToUser?.({
+        args: [recipient, message]
+      });
+    } else {
+      await sayGMToCommunity?.({
+        args: [message]
+      });
+    }
+
+    // Clear inputs after transaction starts
+    if (messageInput) messageInput.value = "";
+    if (recipientInput) recipientInput.value = "";
+
+  } catch (error: any) {
+    addToast({
+      title: "Failed to say GM",
+      description: error?.shortMessage || error?.message || "Please try again later",
+      color: "danger",
+    });
+  }
+};
+
+const handleTokenSend = async () => {
+  if (!isConnected) {
+    addToast({
+      title: "Wallet not connected",
+      description: "Please connect your wallet to send tokens",
+      color: "warning"
+    });
+    return;
+  }
+
+  setIsSending(true);
+
+  try {
+    const amount = customAmount || sendAmount;
+
+    // Use window.ethereum to get provider
+    const ethWin = window as any;
+    if (!ethWin.ethereum) {
+      throw new Error("No wallet provider found");
+    }
+
+    // Create provider and signer using ethers v5 syntax
+    const provider = new ethers.providers.Web3Provider(ethWin.ethereum);
+    const signer = provider.getSigner();
+
+    // Parse amount to wei
+    const amountWei = ethers.utils.parseUnits(amount, "ether");
+
+    // Check balance
+    const balance = await provider.getBalance(address as string);
+    if (balance.lt(amountWei)) {
+      addToast({
+        title: "Insufficient balance",
+        description: `You need at least ${amount} ETH to send`,
+        color: "danger"
+      });
+      setIsSending(false);
+      return;
+    }
+
+    for (let i = 0; i < sendCount; i++) {
+      setCurrentSend(i + 1);
+
+      try {
+        // Generate random recipient if enabled
+        const targetRecipient = useRandomRecipient ?
+          ethers.Wallet.createRandom().address :
+          recipient;
+
+        // Prepare transaction
+        const tx = {
+          to: targetRecipient,
+          value: amountWei,
+          gasLimit: 21000 // Standard ETH transfer gas limit
+        };
+
+        // Send transaction
+        const transaction = await signer.sendTransaction(tx);
+
+        addToast({
+          title: "Transaction Sent",
+          description: `Sending ${amount} ETH to ${targetRecipient.slice(0, 6)}...${targetRecipient.slice(-4)}`,
+          color: "primary"
+        });
+
+        // Wait for confirmation
+        const receipt = await transaction.wait();
+
+        if (receipt.status === 1) {
+          addToast({
+            title: "Transaction Confirmed",
+            description: `Successfully sent ${amount} ETH`,
+            color: "success"
+          });
+        } else {
+          throw new Error("Transaction failed");
+        }
+
+        // Add delay between sends
+        if (i < sendCount - 1) {
+          await new Promise(r => setTimeout(r, 2000));
+        }
+
+      } catch (error: any) {
+        addToast({
+          title: "Transaction Failed",
+          description: error?.message || "Failed to send tokens",
+          color: "danger"
+        });
+        // Continue with next transaction even if one fails
+      }
+    }
+
+  } catch (error: any) {
+    addToast({
+      title: "Error",
+      description: error?.message || "Something went wrong",
+      color: "danger"
+    });
+  }
+
+  setIsSending(false);
+  setCurrentSend(0);
+};
   
   return (
     <div className="py-4">
@@ -126,7 +507,7 @@ const { write: sayGMToUser, isLoading: isSayingGMToUser } = useContractWrite({
           tabList: "gap-6 w-full rounded-medium p-0 border-divider",
         }}
       >
-        <Tab
+  <Tab
           key="swap"
           title={
             <div className="flex items-center gap-2">
@@ -135,114 +516,80 @@ const { write: sayGMToUser, isLoading: isSayingGMToUser } = useContractWrite({
             </div>
           }
         >
-            <Card className="mt-4 border-none shadow-none bg-content1/50">
-              <CardBody>
-                <div className="space-y-4">
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                    <div className="flex flex-col gap-2">
-                      <label className="text-small font-medium">From Token</label>
-                      <Input
-                        placeholder="0.0"
-                        startContent={
-                          <Dropdown>
-                            <DropdownTrigger>
-                              <Button 
-                                variant="light" 
-                                className="min-w-[80px] h-unit-8 text-small flex items-center gap-1"
-                              >
-                                <img src="https://raw.githubusercontent.com/trustwallet/assets/master/blockchains/ethereum/info/logo.png" alt="ETH" className="w-4 h-4 rounded-full" />
-                                ETH
-                                <Icon icon="lucide:chevron-down" className="text-tiny ml-1" />
-                              </Button>
-                            </DropdownTrigger>
-                            <DropdownMenu aria-label="Token selection">
-                              <DropdownItem key="eth" startContent={<img src="https://raw.githubusercontent.com/trustwallet/assets/master/blockchains/ethereum/info/logo.png" alt="ETH" className="w-4 h-4 rounded-full" />}>ETH</DropdownItem>
-                              <DropdownItem key="usdc" startContent={<img src="https://raw.githubusercontent.com/trustwallet/assets/master/blockchains/ethereum/assets/0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48/logo.png" alt="USDC" className="w-4 h-4 rounded-full" />}>USDC</DropdownItem>
-                              <DropdownItem key="usdt" startContent={<img src="https://raw.githubusercontent.com/trustwallet/assets/master/blockchains/ethereum/assets/0xdAC17F958D2ee523a2206206994597C13D831ec7/logo.png" alt="USDT" className="w-4 h-4 rounded-full" />}>USDT</DropdownItem>
-                            </DropdownMenu>
-                          </Dropdown>
-                        }
-                      />
-                    </div>
-                    <div className="flex flex-col gap-2">
-                      <label className="text-small font-medium">To Token</label>
-                      <Input
-                        placeholder="0.0"
-                        startContent={
-                          <Dropdown>
-                            <DropdownTrigger>
-                              <Button 
-                                variant="light" 
-                                className="min-w-[80px] h-unit-8 text-small flex items-center gap-1"
-                              >
-                                <img src="https://raw.githubusercontent.com/trustwallet/assets/master/blockchains/ethereum/assets/0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48/logo.png" alt="USDC" className="w-4 h-4 rounded-full" />
-                                USDC
-                                <Icon icon="lucide:chevron-down" className="text-tiny ml-1" />
-                              </Button>
-                            </DropdownTrigger>
-                            <DropdownMenu aria-label="Token selection">
-                              <DropdownItem key="eth" startContent={<img src="https://raw.githubusercontent.com/trustwallet/assets/master/blockchains/ethereum/info/logo.png" alt="ETH" className="w-4 h-4 rounded-full" />}>ETH</DropdownItem>
-                              <DropdownItem key="usdc" startContent={<img src="https://raw.githubusercontent.com/trustwallet/assets/master/blockchains/ethereum/assets/0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48/logo.png" alt="USDC" className="w-4 h-4 rounded-full" />}>USDC</DropdownItem>
-                              <DropdownItem key="usdt" startContent={<img src="https://raw.githubusercontent.com/trustwallet/assets/master/blockchains/ethereum/assets/0xdAC17F958D2ee523a2206206994597C13D831ec7/logo.png" alt="USDT" className="w-4 h-4 rounded-full" />}>USDT</DropdownItem>
-                            </DropdownMenu>
-                          </Dropdown>
-                        }
-                      />
-                    </div>
+          <Card className="mt-4 border-none shadow-none bg-content1/50">
+            <CardBody>
+              <div className="space-y-4">
+                <div className="flex flex-col gap-2">
+                  <label className="text-small font-medium">Select Tokens to Swap</label>
+                  <div className="flex gap-2 flex-wrap">
+                    {Object.keys(GTE_TOKENS).map((token) => (
+                      <Checkbox
+                        key={token}
+                        isSelected={swapTokens.includes(token)}
+                        onValueChange={(checked) => {
+                          setSwapTokens((prev) =>
+                            checked
+                              ? [...prev, token]
+                              : prev.filter((t) => t !== token)
+                          );
+                        }}
+                        isDisabled={token === "ETH"}
+                      >
+                        {token}
+                      </Checkbox>
+                    ))}
                   </div>
-                  
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                    <div className="flex flex-col gap-2">
-                      <label className="text-small font-medium">Execution Count</label>
-                      <div className="flex gap-2 items-center">
-                        <Button 
-                          size="sm" 
-                          variant="flat" 
-                          isIconOnly
-                          onPress={() => handleExecutionCountChange(executionCount - 1)}
-                        >
-                          <Icon icon="lucide:minus" />
-                        </Button>
-                        <Input 
-                          type="number" 
-                          value={executionCount.toString()} 
-                          onValueChange={(value) => handleExecutionCountChange(parseInt(value) || 1)}
-                          className="max-w-[80px]"
-                        />
-                        <Button 
-                          size="sm" 
-                          variant="flat" 
-                          isIconOnly
-                          onPress={() => handleExecutionCountChange(executionCount + 1)}
-                        >
-                          <Icon icon="lucide:plus" />
-                        </Button>
-                      </div>
-                    </div>
-                    
-                    <div className="flex flex-col gap-2">
-                      <label className="text-small font-medium">Slippage Tolerance</label>
-                      <div className="flex gap-2">
-                        <Button size="sm" variant="flat">0.5%</Button>
-                        <Button size="sm" variant="solid" color="primary">1%</Button>
-                        <Button size="sm" variant="flat">2%</Button>
-                      </div>
-                    </div>
-                  </div>
-                  
-                  <Checkbox defaultSelected>Enable auto gas optimization</Checkbox>
-                  
-                  <Button 
-                    color="primary" 
-                    className="w-full"
-                    onPress={handleStartAutomation}
-                    isLoading={isLoading}
-                  >
-                    {isLoading ? "Starting Automation..." : "Start Swap Automation"}
-                  </Button>
+                  <span className="text-xs text-default-400">
+                    Bot will swap ETH to selected tokens, then reverse all back to ETH.
+                  </span>
                 </div>
-              </CardBody>
-            </Card>
+                {/* NEW: Swap rounds input */}
+                <div className="flex flex-col gap-2">
+                  <label className="text-small font-medium">How many times to swap?</label>
+                  <div className="flex gap-2 items-center">
+                    <Button 
+                      size="sm" 
+                      variant="flat" 
+                      isIconOnly
+                      onPress={() => setSwapRounds(Math.max(1, swapRounds - 1))}
+                    >
+                      <Icon icon="lucide:minus" />
+                    </Button>
+                    <Input 
+                      type="number" 
+                      value={swapRounds.toString()} 
+                      onValueChange={(value) => setSwapRounds(Math.max(1, parseInt(value) || 1))}
+                      className="max-w-[80px]"
+                    />
+                    <Button 
+                      size="sm" 
+                      variant="flat" 
+                      isIconOnly
+                      onPress={() => setSwapRounds(swapRounds + 1)}
+                    >
+                      <Icon icon="lucide:plus" />
+                    </Button>
+                  </div>
+                  <span className="text-xs text-default-400">
+                    Each round: swap ETH to selected tokens, then reverse all back to ETH.
+                  </span>
+                </div>
+                <Button
+                  color="primary"
+                  className="w-full"
+                  onPress={handleSwapBot}
+                  isLoading={isLoading}
+                  startContent={<Icon icon="lucide:refresh-cw" />}
+                  isDisabled={!isConnected || isLoading}
+                >
+                  {isLoading ? "Running Swap Bot..." : "Start Swap Bot"}
+                </Button>
+                {swapStatus && (
+                  <div className="text-center text-sm text-primary mt-2">{swapStatus}</div>
+                )}
+              </div>
+            </CardBody>
+          </Card>
         </Tab>
         
         <Tab
@@ -318,51 +665,33 @@ const { write: sayGMToUser, isLoading: isSayingGMToUser } = useContractWrite({
                   }}
                 >
                   {gmHistory && gmHistory.length > 0 ? (
-                    gmHistory
-                      .slice(-9) // only show last 9 messages
-                      .sort((a: any, b: any) => Number(a.timestamp) - Number(b.timestamp))
-                      .map((gm: any, index: number) => {
-                        const isCommunity = gm.to === "0x0000000000000000000000000000000000000000";
-                        const isMine = address && gm.from?.toLowerCase() === address.toLowerCase();
-                        const align = isMine ? "justify-end" : "justify-start";
-                        const bubbleBg = isMine
-                          ? "bg-[#dcf8c6]"
-                          : isCommunity
-                          ? "bg-[#fffad1]"
-                          : "bg-white";
-                        const textColor = isMine
-                          ? "text-[#075e54]"
-                          : "text-[#222]";
-                        const subTextColor = "text-[#888] text-xs";
-                        return (
-                          <div key={index} className={`flex ${align} mb-2`}>
-                            <div
-                              className={`rounded-xl px-3 py-2 shadow-sm max-w-[80%] ${bubbleBg} ${textColor}`}
-                              style={{
-                                borderBottomRightRadius: isMine ? "0.5rem" : "1.25rem",
-                                borderBottomLeftRadius: !isMine ? "0.5rem" : "1.25rem",
-                              }}
-                            >
-                              <div className="flex items-center gap-2 mb-1">
-                                <span className={`text-xs font-semibold ${textColor}`}>
-                                  {isCommunity
-                                    ? "Community"
-                                    : isMine
-                                    ? "You"
-                                    : `${gm.from?.slice(0, 6)}...${gm.from?.slice(-4)}`}
-                                </span>
-                                <span className={subTextColor}>
-                                  {new Date(Number(gm.timestamp) * 1000).toLocaleTimeString([], {
-                                    hour: "2-digit",
-                                    minute: "2-digit",
-                                  })}
-                                </span>
+                    <div className="flex flex-col gap-2">
+                      {gmHistory
+                        .slice(-9)
+                        .sort((a: any, b: any) => Number(a.timestamp) - Number(b.timestamp))
+                        .map((gm: any, index: number) => {
+                          const isCommunity = gm.to === "0x0000000000000000000000000000000000000000";
+                          const isMine = address && gm.from?.toLowerCase() === address.toLowerCase();
+                          const align = isMine ? "justify-end" : "justify-start";
+                          const bubbleBg = isMine ? "bg-[#dcf8c6]" : isCommunity ? "bg-[#fffad1]" : "bg-white";
+                          
+                          return (
+                            <div key={index} className={`flex ${align} mb-2`}>
+                              <div className={`rounded-xl px-3 py-2 shadow-sm max-w-[80%] ${bubbleBg}`}>
+                                <div className="flex items-center gap-2 mb-1">
+                                  <span className="text-xs font-semibold text-black dark:text-black">
+                                    {isCommunity ? "Community" : isMine ? "You" : `${gm.from?.slice(0, 6)}...${gm.from?.slice(-4)}`}
+                                  </span>
+                                  <span className="text-[#888] text-xs">
+                                    {new Date(Number(gm.timestamp) * 1000).toLocaleTimeString()}
+                                  </span>
+                                </div>
+                                <div className="text-sm break-words text-black dark:text-black">{gm.message}</div>
                               </div>
-                              <div className={`text-sm break-words ${textColor}`}>{gm.message}</div>
                             </div>
-                          </div>
-                        );
-                      })
+                          );
+                        })}
+                    </div>
                   ) : (
                     <div className="flex flex-1 items-center justify-center text-default-400 text-sm">
                       No GM messages yet.
@@ -409,57 +738,14 @@ const { write: sayGMToUser, isLoading: isSayingGMToUser } = useContractWrite({
                     />
                     <Button
                       color="primary"
-                      onPress={async () => {
-                        try {
-                          const messageInput = document.getElementById("gm-message") as HTMLInputElement;
-                          const recipientInput = document.getElementById("gm-recipient") as HTMLInputElement;
-                          const message = messageInput?.value?.trim() || "GM!";
-                          const recipient = recipientInput?.value?.trim();
-
-                          if (!isConnected) {
-                            addToast({
-                              title: "Wallet not connected",
-                              description: "Please connect your wallet to say GM",
-                              color: "warning"
-                            });
-                            return;
-                          }
-                          if (recipient) {
-                            await sayGMToUser?.({
-                              args: [recipient, message]
-                            });
-                          } else {
-                            await sayGMToCommunity?.({
-                              args: [message]
-                            });
-                          }
-
-                          addToast({
-                            title: "GM sent!",
-                            description: recipient
-                              ? `You greeted ${recipient.slice(0, 6)}...${recipient.slice(-4)}`
-                              : "You greeted the community!",
-                            color: "success",
-                          });
-
-                          // Clear inputs
-                          if (messageInput) messageInput.value = "";
-                          if (recipientInput) recipientInput.value = "";
-                        } catch (error: any) {
-                          addToast({
-                            title: "Failed to say GM",
-                            description: error?.shortMessage || error?.message || "Please try again later",
-                            color: "danger",
-                          });
-                        }
-                      }}
+                      onPress={handleSendGM}
                       startContent={<Icon icon="lucide:smile-plus" />}
-                      isLoading={isSayingGMToCommunity || isSayingGMToUser}
-                      isDisabled={!isConnected || isSayingGMToCommunity || isSayingGMToUser}
+                      isLoading={isGMLoading}
+                      isDisabled={!isConnected || isGMLoading}
                       size="sm"
                       className="self-end"
                     >
-                      {isSayingGMToCommunity || isSayingGMToUser ? "Saying GM..." : "Send"}
+                      {isGMLoading ? "Saying GM..." : "Send"}
                     </Button>
                   </div>
                   {!isConnected && (
@@ -473,6 +759,7 @@ const { write: sayGMToUser, isLoading: isSayingGMToUser } = useContractWrite({
           </Card>
         </Tab>
 
+        // Add this Tab after the Say GM tab
         <Tab
           key="send"
           title={
@@ -484,85 +771,184 @@ const { write: sayGMToUser, isLoading: isSayingGMToUser } = useContractWrite({
         >
           <Card className="mt-4 border-none shadow-none bg-content1/50">
             <CardBody>
-              <div className="space-y-4">
-                <Input
-                  label="Recipient Address"
-                  placeholder="0x..."
-                  startContent={
-                    <Icon icon="lucide:wallet" className="text-default-400 text-small" />
-                  }
-                />
-                
-                <Input
-                  label="Amount"
-                  placeholder="0.0"
-                  startContent={
-                    <Dropdown>
-                      <DropdownTrigger>
-                        <Button 
-                          variant="light" 
-                          className="min-w-[80px] h-unit-8 text-small"
+              <div className="space-y-6">
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                  {/* Amount Selection Section */}
+                  <div className="space-y-4">
+                    <div className="flex flex-col gap-2">
+                      <label className="text-medium font-semibold">Amount to Send</label>
+                      <div className="flex flex-wrap gap-2">
+                        <Button
+                          size="sm"
+                          variant={!customAmount && sendAmount === "0.1" ? "solid" : "flat"}
+                          color={!customAmount && sendAmount === "0.1" ? "primary" : "default"}
+                          onPress={() => {
+                            setSendAmount("0.1");
+                            setCustomAmount("");
+                          }}
                         >
-                          ETH
-                          <Icon icon="lucide:chevron-down" className="text-tiny ml-1" />
+                          0.1 ETH
                         </Button>
-                      </DropdownTrigger>
-                      <DropdownMenu aria-label="Token selection">
-                        <DropdownItem key="eth">ETH</DropdownItem>
-                        <DropdownItem key="usdc">USDC</DropdownItem>
-                        <DropdownItem key="usdt">USDT</DropdownItem>
-                      </DropdownMenu>
-                    </Dropdown>
-                  }
-                />
-                
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                  <div className="flex flex-col gap-2">
-                    <label className="text-small font-medium">Execution Count</label>
-                    <div className="flex gap-2 items-center">
-                      <Button 
-                        size="sm" 
-                        variant="flat" 
-                        isIconOnly
-                        onPress={() => handleExecutionCountChange(executionCount - 1)}
-                      >
-                        <Icon icon="lucide:minus" />
-                      </Button>
-                      <Input 
-                        type="number" 
-                        value={executionCount.toString()} 
-                        onValueChange={(value) => handleExecutionCountChange(parseInt(value) || 1)}
-                        className="max-w-[80px]"
+                        <Button
+                          size="sm"
+                          variant={!customAmount && sendAmount === "0.01" ? "solid" : "flat"}
+                          color={!customAmount && sendAmount === "0.01" ? "primary" : "default"}
+                          onPress={() => {
+                            setSendAmount("0.01");
+                            setCustomAmount("");
+                          }}
+                        >
+                          0.01 ETH
+                        </Button>
+                        <Button
+                          size="sm"
+                          variant={!customAmount && sendAmount === "0.0001" ? "solid" : "flat"}
+                          color={!customAmount && sendAmount === "0.0001" ? "primary" : "default"}
+                          onPress={() => {
+                            setSendAmount("0.0001");
+                            setCustomAmount("");
+                          }}
+                        >
+                          0.0001 ETH
+                        </Button>
+                      </div>
+                      
+                      <Input
+                        label="Custom Amount"
+                        placeholder="Enter ETH amount"
+                        value={customAmount}
+                        onValueChange={setCustomAmount}
+                        className="mt-2"
+                        startContent={
+                          <div className="pointer-events-none flex items-center">
+                            <Icon icon="cryptocurrency:eth" className="text-default-400 text-xl" />
+                          </div>
+                        }
+                        description="Enter a custom amount of ETH to send"
                       />
-                      <Button 
-                        size="sm" 
-                        variant="flat" 
-                        isIconOnly
-                        onPress={() => handleExecutionCountChange(executionCount + 1)}
-                      >
-                        <Icon icon="lucide:plus" />
-                      </Button>
                     </div>
                   </div>
-                  
-                  <div className="flex flex-col gap-2">
-                    <label className="text-small font-medium">Priority</label>
-                    <div className="flex gap-2">
-                      <Button size="sm" variant="flat">Low</Button>
-                      <Button size="sm" variant="solid" color="primary">Medium</Button>
-                      <Button size="sm" variant="flat">High</Button>
+
+                  {/* Recipient Selection Section */}
+                  <div className="space-y-4">
+                    <div className="flex flex-col gap-2">
+                      <label className="text-medium font-semibold">Recipient</label>
+                      <div className="flex gap-2">
+                        <Button
+                          size="sm"
+                          variant={useRandomRecipient ? "solid" : "flat"}
+                          color={useRandomRecipient ? "primary" : "default"}
+                          onPress={() => setUseRandomRecipient(true)}
+                          startContent={<Icon icon="lucide:shuffle" />}
+                        >
+                          Random Address
+                        </Button>
+                        <Button
+                          size="sm"
+                          variant={!useRandomRecipient ? "solid" : "flat"}
+                          color={!useRandomRecipient ? "primary" : "default"}
+                          onPress={() => setUseRandomRecipient(false)}
+                          startContent={<Icon icon="lucide:wallet" />}
+                        >
+                          Custom Address
+                        </Button>
+                      </div>
+                      
+                      <Input
+                        label="Recipient Address"
+                        placeholder="0x..."
+                        value={recipient}
+                        onValueChange={setRecipient}
+                        isDisabled={useRandomRecipient}
+                        className="mt-2"
+                        startContent={
+                          <Icon icon="lucide:wallet" className="text-default-400 text-small" />
+                        }
+                        description={useRandomRecipient ? "Random address will be generated" : "Enter recipient's wallet address"}
+                      />
                     </div>
                   </div>
                 </div>
-                
-                <Button 
-                  color="primary" 
+
+                {/* Transaction Settings */}
+                <div className="p-4 rounded-xl bg-content2">
+                  <h4 className="text-medium font-semibold mb-4">Transaction Settings</h4>
+                  
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    {/* Number of Transactions */}
+                    <div className="flex flex-col gap-2">
+                      <label className="text-small">Number of Transactions</label>
+                      <div className="flex gap-2 items-center">
+                        <Button
+                          size="sm"
+                          variant="flat"
+                          isIconOnly
+                          onPress={() => setSendCount(Math.max(1, sendCount - 1))}
+                        >
+                          <Icon icon="lucide:minus" />
+                        </Button>
+                        <Input
+                          type="number"
+                          value={sendCount.toString()}
+                          onValueChange={(value) => setSendCount(Math.max(1, parseInt(value)))}
+                          className="max-w-[100px]"
+                          size="sm"
+                        />
+                        <Button
+                          size="sm"
+                          variant="flat"
+                          isIconOnly
+                          onPress={() => setSendCount(sendCount + 1)}
+                        >
+                          <Icon icon="lucide:plus" />
+                        </Button>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Transaction Summary */}
+                <div className="p-4 rounded-xl bg-primary/10 border border-primary/20">
+                  <div className="flex flex-col gap-2">
+                    <div className="flex justify-between items-center">
+                      <span className="text-small">Amount per Transaction:</span>
+                      <span className="font-semibold">{customAmount || sendAmount} ETH</span>
+                    </div>
+                    <div className="flex justify-between items-center">
+                      <span className="text-small">Number of Transactions:</span>
+                      <span className="font-semibold">{sendCount}</span>
+                    </div>
+                    <div className="flex justify-between items-center">
+                      <span className="text-small">Total Amount:</span>
+                      <span className="font-semibold">{(parseFloat(customAmount || sendAmount) * sendCount).toFixed(6)} ETH</span>
+                    </div>
+                    <div className="flex justify-between items-center">
+                      <span className="text-small">Recipient:</span>
+                      <span className="font-semibold">{useRandomRecipient ? "Random Address" : (recipient || "Not set")}</span>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Action Button */}
+                <Button
+                  color="primary"
                   className="w-full"
-                  onPress={handleStartAutomation}
-                  isLoading={isLoading}
+                  size="lg"
+                  onPress={handleTokenSend}
+                  isLoading={isSending}
+                  startContent={<Icon icon="lucide:send" />}
+                  isDisabled={!isConnected || isSending || (!useRandomRecipient && !recipient)}
                 >
-                  {isLoading ? "Starting Automation..." : "Start Send Automation"}
+                  {isSending 
+                    ? `Sending Transaction ${currentSend}/${sendCount}...` 
+                    : `Send ${customAmount || sendAmount} ETH ${sendCount} time(s)`}
                 </Button>
+
+                {!isConnected && (
+                  <p className="text-warning text-xs text-center">
+                    Please connect your wallet to send transactions
+                  </p>
+                )}
               </div>
             </CardBody>
           </Card>
