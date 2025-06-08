@@ -13,10 +13,17 @@ import { useState } from "react";
 const GM_CONTRACT_ADDRESS = "0x79ed1039f8c58a2f7ee94b3d1c78fd5785cee25e";
 const GTE_ROUTER_ADDRESS = "0xa6b579684e943f7d00d616a48cf99b5147fc57a5";
 const GTE_TOKENS = {
-  MegaETH: { address: "0x10a6be7d23989d00d528e68cf8051d095f741145", decimals: 18 },
-  WETH: { address: "0x776401b9bc8aae31a685731b7147d4445fd9fb19", decimals: 18 },
-  USDC: { address: "0x8d635c4702ba38b1f1735e8e784c7265dcc0b623", decimals: 6 },
-  tkUSDC: { address: "0xfaf334e157175ff676911adcf0964d7f54f2c424", decimals: 6 },
+  MegaETH: { address: ethers.utils.getAddress("0x10a6be7d23989d00d528e68cf8051d095f741145"), decimals: 18 },
+  WETH: { address: ethers.utils.getAddress("0x776401b9bc8aae31a685731b7147d4445fd9fb19"), decimals: 18 },
+  GTE: { address: ethers.utils.getAddress("0x9629684df53db9e4484697d0a50c442b2bfa80a8"), decimals: 18 },
+  USDC: { address: ethers.utils.getAddress("0x8d635c4702ba38b1f1735e8e784c7265dcc0b623"), decimals: 6 },
+  tkUSDC: { address: ethers.utils.getAddress("0xfaf334e157175ff676911adcf0964d7f54f2c424"), decimals: 6 },
+  Kimchizuki: { address: ethers.utils.getAddress("0xa626f15d10f2b30af1fb0d017f20a579500b5029"), decimals: 18 },
+  five: { address: ethers.utils.getAddress("0xf512886bc6877b0740e8ca0b3c12bb4ca602b530"), decimals: 18 },
+  "gte pepe": { address: ethers.utils.getAddress("0xbba08cf5ece0cc21e1deb5168746c001b123a756"), decimals: 18 },
+  Enzo: { address: ethers.utils.getAddress("0x9cd3a7b840464d83bee643bc9064d246375b07a3"), decimals: 18 },
+  Nazdaq: { address: ethers.utils.getAddress("0xd0ed4c2af51bb08c58a808b9b407508261a87f25"), decimals: 18 },
+  Toast: { address: ethers.utils.getAddress("0xc49ae2a62e7c18b7ddcab67617a63bf5182b08de"), decimals: 18 },
   ETH: { address: null, decimals: 18 },
 };
 
